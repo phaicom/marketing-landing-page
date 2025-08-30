@@ -1,35 +1,30 @@
 import type { Locale } from 'next-intl'
 import { setRequestLocale } from 'next-intl/server'
+import { notFound } from 'next/navigation'
+import { getRequestContext } from '@/lib/request-context'
 
-// Define PageProps type
-interface PageProps {
-  params: {
-    locale: Locale
-    slug?: string[]
+export default async function IndexPage() {
+  const { country, langs, locale, slug } = await getRequestContext()
+
+  if (!country || !Array.isArray(langs) || langs.length === 0) {
+    notFound()
   }
-}
 
-export default async function IndexPage({ params }: PageProps) {
-  const { locale, slug } = await params
-
-  // Enable static rendering
   setRequestLocale(locale as Locale)
 
   return (
-    <div className="flex gap-2">
-      <h1>
-        Page
-      </h1>
-      <div className="flex flex-col gap-4">
-        <p>
-          Locale:
-          {' '}
-          {locale}
-        </p>
-        <p>
-          {slug ? slug.join('/') : 'index'}
-        </p>
-      </div>
+    <div className="flex flex-col gap-2 border-1 border-dotted p-2">
+      <h2>Index Page</h2>
+      <p>
+        Page Locale:
+        {' '}
+        {locale}
+      </p>
+      <p>
+        Slug:
+        {' '}
+        {slug || '<none>'}
+      </p>
     </div>
   )
 }
