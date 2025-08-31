@@ -13,6 +13,7 @@ interface LayoutProps {
 
 const inter = Inter({ subsets: ['latin'] })
 
+// SEO Things
 // export function generateStaticParams() {
 //   return routing.locales.map((locale) => ({ locale }))
 // }
@@ -43,7 +44,7 @@ export default async function LocaleLayout({
   return (
     <html className="h-full" lang={locale}>
       <body className={clsx(inter.className, 'flex h-full flex-col')}>
-        <NextIntlClientProvider>
+        <NextIntlClientProvider locale={locale as Locale}>
           <header>
             <h1>
               locale:

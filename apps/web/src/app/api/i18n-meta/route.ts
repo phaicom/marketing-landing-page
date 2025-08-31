@@ -17,7 +17,7 @@ async function MockCMS() {
     },
     {
       url: 'third-lp',
-      languages: ['AR', 'IT', 'DE'],
+      languages: ['AR', 'EN', 'IT', 'DE'],
       countries: ['IT', 'DE', 'AE'],
     },
   ]

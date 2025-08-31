@@ -1,14 +1,11 @@
 import type { NextFetchEvent, NextRequest } from 'next/server'
 import type { CustomMiddleware } from './chain'
 import { NextResponse } from 'next/server'
-import { routing } from '@/i18n/routing'
 
 const EXTERNAL_BASE = 'https://www.hfm.com'
+const COOKIE_NAME = 'NEXT_LOCALE'
 
 const isTwoLetter = (s: string) => /^[a-z]{2}$/i.test(s)
-function isSupportedLocale(s: string) {
-  return routing.locales.includes(s.toLowerCase() as any)
-}
 
 function notFound(req: NextRequest) {
   return NextResponse.rewrite(new URL('/404', req.url))
@@ -31,9 +28,7 @@ async function validateSlugAndHeaders(opts: {
   )
 
   if (!r.ok) {
-    return {
-      ok: false as const,
-    }
+    return { ok: false as const }
   }
 
   const data = (await r.json()) as { languages?: string[], countries?: string[] }
@@ -55,15 +50,28 @@ async function validateSlugAndHeaders(opts: {
     ok: true as const,
     languages,
     langsLower: languages.map((l) => l.toLowerCase()),
+    defaultLang: languages[0]?.toLowerCase() || 'en',
     requestHeaders,
   }
+}
+
+function setLocaleCookie(res: NextResponse, locale: string) {
+  res.cookies.set({
+    name: COOKIE_NAME,
+    value: locale,
+    path: '/',
+    httpOnly: true,
+    sameSite: 'lax',
+    // eslint-disable-next-line node/prefer-global/process
+    secure: process.env.NODE_ENV === 'production',
+    maxAge: 60 * 60 * 24 * 30, // 30 days
+  })
 }
 
 export function withI18nMiddleware(middleware: CustomMiddleware) {
   return async (req: NextRequest, event: NextFetchEvent) => {
     const origin = req.nextUrl.origin
     const segments = req.nextUrl.pathname.split('/').filter(Boolean)
-
     const countryParam = req.nextUrl.searchParams.get('country') ?? 'en'
 
     // "/" → external default
@@ -81,94 +89,53 @@ export function withI18nMiddleware(middleware: CustomMiddleware) {
         return NextResponse.redirect(`${EXTERNAL_BASE}/${lang}`)
       }
 
-      // "/{slug}" → validate and pass with headers
-      const valid = await validateSlugAndHeaders({
-        origin,
-        slug: seg,
-        countryParam,
-        req,
-      })
+      // "/{slug}" → validate and pass with headers (no explicit locale in path)
+      const valid = await validateSlugAndHeaders({ origin, slug: seg, countryParam, req })
       if (!valid.ok) {
         return notFound(req)
       }
 
-      return middleware(
-        req,
-        event,
-        NextResponse.next({ request: { headers: valid.requestHeaders } }),
-      )
+      const res = NextResponse.next({ request: { headers: valid.requestHeaders } })
+      setLocaleCookie(res, valid.defaultLang)
+      return middleware(req, event, res)
     }
 
     // Multi-segment
     const [first, ...restParts] = segments
     const rest = restParts.join('/')
 
-    // A) first is a supported locale
-    if (isSupportedLocale(first)) {
+    if (isTwoLetter(first)) {
+      // Looks like a locale; check against CMS for this slug
       const locale = first.toLowerCase()
-
-      const valid = await validateSlugAndHeaders({
-        origin,
-        slug: rest,
-        countryParam,
-        req,
-      })
+      const valid = await validateSlugAndHeaders({ origin, slug: rest, countryParam, req })
       if (!valid.ok) {
         return notFound(req)
       }
 
-      // correct slug but incorrect locale → redirect to languages[0]
+      // If locale is not allowed by CMS → redirect to the first allowed one
       if (valid.langsLower.length && !valid.langsLower.includes(locale)) {
-        const targetLang = valid.langsLower[0] || 'en'
+        const targetLang = valid.defaultLang
         const url = req.nextUrl.clone()
         url.pathname = `/${targetLang}/${rest}`
         url.searchParams.set('country', countryParam)
         return NextResponse.redirect(url)
       }
 
-      // correct slug + correct locale → pass through
-      return middleware(
-        req,
-        event,
-        NextResponse.next({ request: { headers: valid.requestHeaders } }),
-      )
+      // Locale is allowed → pass through and set cookie
+      const res = NextResponse.next({ request: { headers: valid.requestHeaders } })
+      setLocaleCookie(res, locale)
+      return middleware(req, event, res)
     }
 
-    // B) looks like a locale but NOT supported
-    if (isTwoLetter(first)) {
-      const valid = await validateSlugAndHeaders({
-        origin,
-        slug: rest,
-        countryParam,
-        req,
-      })
-      if (!valid.ok) {
-        return notFound(req)
-      }
-
-      const targetLang = (valid.langsLower?.[0] ?? 'en').toLowerCase()
-      const url = req.nextUrl.clone()
-      url.pathname = `/${targetLang}/${rest}`
-      url.searchParams.set('country', countryParam)
-      return NextResponse.redirect(url)
-    }
-
-    // C) first is not a locale at all (nested slug path, no locale)
+    // No locale segment at all (nested slug path)
     const slugPath = segments.join('/')
-    const valid = await validateSlugAndHeaders({
-      origin,
-      slug: slugPath,
-      countryParam,
-      req,
-    })
+    const valid = await validateSlugAndHeaders({ origin, slug: slugPath, countryParam, req })
     if (!valid.ok) {
       return notFound(req)
     }
 
-    return middleware(
-      req,
-      event,
-      NextResponse.next({ request: { headers: valid.requestHeaders } }),
-    )
+    const res = NextResponse.next({ request: { headers: valid.requestHeaders } })
+    setLocaleCookie(res, valid.defaultLang)
+    return middleware(req, event, res)
   }
 }
