@@ -1,4 +1,3 @@
-import type { Locale } from 'next-intl'
 import { clsx } from 'clsx'
 import { NextIntlClientProvider } from 'next-intl'
 import { setRequestLocale } from 'next-intl/server'
@@ -8,30 +7,51 @@ import './globals.css'
 
 interface LayoutProps {
   children: React.ReactNode
-  params: { locale: Locale }
+  params: {
+    locale: string
+    slug?: string[]
+  }
+  searchParams: { country?: string }
 }
 
 const inter = Inter({ subsets: ['latin'] })
 
 // SEO Things
-// export function generateStaticParams() {
-//   return routing.locales.map((locale) => ({ locale }))
-// }
+// need a way to get country at build time eg -> app/[locale]/[country]/[slug]/page.tsx
+// export async function generateStaticParams({ params, searchParams }: LayoutProps) {
+//   const { slug } = params
+//   const { country } = searchParams
 
-// export async function generateMetadata(
-//   props: Omit<LayoutProps, 'children'>,
-// ) {
-//   const { locale } = await props.params
-
-//   const t = await getTranslations({
-//     locale: locale as Locale,
-//     namespace: 'LocaleLayout',
-//   })
-
-//   return {
-//     title: t('title'),
+//   if (!slug || slug.length === 0 || country === undefined || country.trim() === '') {
+//     return []
 //   }
+
+//   const r = await fetch(
+//     `${origin}/api/i18n-meta?slug=${slug[-1] || ''}&country=${country}`,
+//     { cache: 'no-store' },
+//   )
+
+//   if (!r.ok) {
+//     return []
+//   }
+
+//   const data = (await r.json()) as { languages: string[] }
+
+//   return data.languages.map((locale) => ({ locale }))
 // }
+
+export async function generateMetadata() {
+  const { locale } = await getRequestContext()
+
+  // const t = await getTranslations({
+  //   locale: locale as Locale,
+  //   namespace: 'LocaleLayout',
+  // })
+
+  return {
+    title: `${locale}`,
+  }
+}
 
 export default async function LocaleLayout({
   children,
@@ -39,12 +59,12 @@ export default async function LocaleLayout({
   const { country, langs, locale } = await getRequestContext()
 
   // Enable static rendering
-  setRequestLocale(locale as Locale)
+  setRequestLocale(locale)
 
   return (
     <html className="h-full" lang={locale}>
       <body className={clsx(inter.className, 'flex h-full flex-col')}>
-        <NextIntlClientProvider locale={locale as Locale}>
+        <NextIntlClientProvider>
           <header>
             <h1>
               locale:
